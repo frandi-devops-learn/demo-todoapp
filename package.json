@@ -1,0 +1,33 @@
+{
+  "name": "devops-sample",
+  "version": "1.0.0",
+  "description": "Simple Node.js + PostgreSQL web app",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "dependencies": {
+    "axios": "^1.13.6",
+    "body-parser": "^1.20.2",
+    "cors": "^2.8.5",
+    "dotenv": "^17.2.1",
+    "express": "^4.21.2",
+    "helmet": "^8.1.0",
+    "morgan": "^1.10.1",
+    "node-cron": "^4.2.1",
+    "pg": "^8.20.0",
+    "pg-hstore": "^2.3.4",
+    "sequelize": "^6.37.8"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/frandilinhtet/demo-todo-list.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/frandilinhtet/demo-todo-list/issues"
+  },
+  "homepage": "https://github.com/frandilinhtet/demo-todo-list#readme"
+}
