@@ -11,40 +11,42 @@ permissions:
 jobs:
   build-and-push:
     runs-on: ubuntu-latest
+    outputs:
+      image_tag: ${{ steps.vars.outputs.short_sha }}
+      registry: ${{ steps.login-ecr.outputs.registry }}
     steps:
-    - name: Checkout Code
-      uses: actions/checkout@v4
+      - name: Checkout Code
+        uses: actions/checkout@v4
 
-    - name: Setup Node.js
-      uses: actions/setup-node@v4
-      with:
-        node-version: '24'
-        cache: 'npm'
-    - run: npm install
-    - run: npm test --if-present
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: 'npm'
+      - run: npm install
+      - run: npm test --if-present
 
+      - name: Configure AWS Credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_OIDC_ROLE }}
+          aws-region: ap-southeast-1
 
-    # 1. Configure AWS Credentials using OIDC
-    - name: Configure AWS Credentials
-      uses: aws-actions/configure-aws-credentials@v4
-      with:
-        role-to-assume: ${{ secrets.AWS_OIDC_ROLE }}
-        aws-region: ap-southeast-1
+      - name: Login to Amazon ECR
+        id: login-ecr
+        uses: aws-actions/amazon-ecr-login@v2
 
-    # 2. Log in to Amazon ECR
-    - name: Login to Amazon ECR
-      id: login-ecr
-      uses: aws-actions/amazon-ecr-login@v2
+      - name: Set Short SHA
+        id: vars
+        run: echo "short_sha=$(echo $GITHUB_SHA | cut -c1-7)" >> $GITHUB_OUTPUT
 
-    # 3. Build and Push
-    - name: Build and Push to ECR
-      env:
-        ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
-        ECR_REPOSITORY: ${{ secrets.ECR_REPOSITORY }}
-      run: |
-        SHORT_SHA=$(echo $GITHUB_SHA | cut -c1-7)
-        docker build -t $ECR_REGISTRY/$ECR_REPOSITORY:$SHORT_SHA .
-        docker push $ECR_REGISTRY/$ECR_REPOSITORY:$SHORT_SHA
+      - name: Build and Push to ECR
+        env:
+          ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
+          ECR_REPOSITORY: ${{ secrets.ECR_REPOSITORY }}
+        run: |
+          docker build -t $ECR_REGISTRY/$ECR_REPOSITORY:${{ steps.vars.outputs.short_sha }} .
+          docker push $ECR_REGISTRY/$ECR_REPOSITORY:${{ steps.vars.outputs.short_sha }}
 
   deploy:
     needs: build-and-push
@@ -57,22 +59,23 @@ jobs:
           aws-region: ap-southeast-1
 
       - name: Update Task Definition
+        env:
+          IMAGE_URI: ${{ needs.build-and-push.outputs.registry }}/${{ secrets.ECR_REPOSITORY }}:${{ needs.build-and-push.outputs.image_tag }}
         run: |
-          # 1. Fetch the current task definition
+          # 1. Fetch current task definition
           aws ecs describe-task-definition \
             --task-definition demo-todo-backend \
             --query taskDefinition > task-def.json
 
-          # 2. Inject the new image URI using jq
-          cat task-def.json | jq --arg IMAGE "${{ steps.login-ecr.outputs.registry }}/${{ secrets.ECR_REPOSITORY }}:${{ github.sha }}" \
+          # 2. Inject the correct Image URI
+          cat task-def.json | jq --arg IMAGE "$IMAGE_URI" \
           '.containerDefinitions[0].image = $IMAGE | del(.taskDefinitionArn, .revision, .status, .requiresAttributes, .compatibilities, .registeredAt, .registeredBy)' \
           > new-task-def.json
 
-          # 3. Register the new revision
+          # 3. Register and Update
           NEW_TASK_DEF=$(aws ecs register-task-definition --cli-input-json file://new-task-def.json)
-          
-          # 4. Update the service to use the new revision
           REVISION=$(echo $NEW_TASK_DEF | jq -r '.taskDefinition.revision')
+          
           aws ecs update-service \
             --cluster demo-todo-cluster \
             --service demo-todo-service \
