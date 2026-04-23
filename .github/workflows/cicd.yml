@@ -23,14 +23,6 @@ jobs:
     - run: npm install
     - run: npm test --if-present
 
-    - name: Debug Secret
-      run: |
-        if [ -n "${{ secrets.AWS_OIDC_ROLE }}" ]; then
-          echo "Secret is set and non-empty."
-        else
-          echo "Secret is empty or not accessible!"
-        fi
-
     # 1. Configure AWS Credentials using OIDC
     - name: Configure AWS Credentials
       uses: aws-actions/configure-aws-credentials@v4
